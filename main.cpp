@@ -1,8 +1,8 @@
 #include <opencv2/opencv.hpp>
 #include <algorithm>
 #include <unistd.h>
-#include <tesseract/baseapi.h>
-#include <leptonica/allheaders.h>
+//#include <tesseract/baseapi.h> // OCR も将来的に組み込みたいが...
+//#include <leptonica/allheaders.h>
 
 #define HI  95  // jpeg high quality
 #define MID 75  // jpeg middle quality: 60 から変更
@@ -22,7 +22,6 @@ int show_img(cv::Mat img, const char *title) {
     cv::imshow(title, img_scale);
     cv::waitKey(0);
     cv::destroyWindow(title);
-
     return 0;
 }
 
@@ -49,7 +48,6 @@ std::vector<cv::Point> get_outer_contour(cv::Mat img) { // 外周を返す
             if (   (contours[i][j].x > 0.975 * img_width)  // 輪郭に含まれる点が img の左右下 
                 || (contours[i][j].x < 0.025 * img_width)  // 2.5%より中央の点だけを扱う
                 || (contours[i][j].y > 0.975 * img_height)) {break;};  // 外れる場合は除外
-                //|| (contours[i][j].y > 0.75 * img_height)) {break;};  // 外れる場合は除外
             if (contours[i][j].x > x_max) {
                 x_max = contours[i][j].x;
             }
@@ -124,7 +122,7 @@ void usage(char *program_name) {
     std::cout << "               -l: low    qualty jpeg: " << LOW << std::endl;
 }
 
-cv::Mat diff_g2r(cv::Mat img) { // 緑色と赤色の差分を強調
+cv::Mat diff_g2r(cv::Mat img) { // 緑色と赤色の差分を取って強調
     std::vector<cv::Mat> planes;
     cv::Mat img_blur, result;
     cv::Size ksize = cv::Size(123, 123); // ここのパラメータは適宜(奇数でなければならない)
@@ -178,8 +176,8 @@ int main(int argc, char *argv[]) {
     if (png_flag && jpg_quality_bit > 0) {
 	      std::cout << "png format: option -h/-m/-l is ignored." << std::endl;
     }
-    input_file = argv[argc - 1]; //   ファイル名は最後の引数
-    img_org = cv::imread(input_file, -1); // 第1引数の画像をopen
+    input_file = argv[argc - 1];          // ファイル名は最後の引数
+    img_org = cv::imread(input_file, -1); // そのファイル名の画像をopen
     if(img_org.empty()) { return -1;}
 
     img_diff = diff_g2r(img_org);                          // 緑色と赤色の差分を取って強調
