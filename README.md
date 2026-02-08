@@ -23,4 +23,4 @@ A trial to do that using OpenCV.
 
 A ScanSnap-scanned image seems to have a slightly greenish background.
 To detect a margin area, the difference between the Green-channel and the Red-channel of the scanned image is calculated and enhanced by OpenCV.
-This works almost well when the scanned image is in gray scale, but when color image, detection may fail.
+This works almost well when the scanned image is BW-like, but when the image is colorful (especially greenish), detection may fail.
