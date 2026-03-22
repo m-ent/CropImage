@@ -190,14 +190,25 @@ int main(int argc, char *argv[]) {
 
         new_contours2.push_back(outer_contour);
         cv::drawContours(img_org, new_contours2, 0, cv::Scalar(255, 255, 0));
-        show_img(img_scale, "1st recognition");
+        //show_img(img_scale, "1st recognition");
+        show_img(img_org, "1st recognition");
         return 0;
     #endif
 
-    float angle = rect.angle;                              // 外接矩形の傾き
-    float r_angle = (angle > 45.0) ? angle-90.0: angle;    // angle の値によって調整
+    float angle = rect.angle;   // 外接矩形の傾き
+    if (angle > 45.0) {         // angle の値によって調整
+        angle = angle - 90.0;
+    } else if (angle < -45.0) {
+        angle = angle + 90.0;
+    };
 
-    cv::Mat M = cv::getRotationMatrix2D(rect.center, r_angle, 1.0);;          // 回転行列
+    /*
+    std::cout << "angle:" << angle << std::endl;
+    std::cout << "r_angle:" << r_angle << std::endl;
+    std::cout << "++++++++++++++++++++++++++++" << std::endl;;
+    */
+
+    cv::Mat M = cv::getRotationMatrix2D(rect.center, angle, 1.0);;          // 回転行列
     cv::warpAffine(img_org, img_rotated, M, img_org.size(), cv::INTER_CUBIC); // 回転して img_rotated に保存
                                                                               
     img_diff = diff_g2r(img_rotated); // 緑色と赤色の差分を強調
@@ -307,7 +318,18 @@ int main(int argc, char *argv[]) {
         std::cout << maxVal << "/" << gamma << std::endl;
         */
 
-        float gamma = 1.2; // gamma 値を決め打ちにしてみる
+	/* 画像の最大値、最小値の確認用
+        cv::Point min_pt, max_pt;
+        double minVal, maxVal;
+        cv::Mat img_singlechannel = img_cropped;
+        cvtColor(img_singlechannel, img_singlechannel, cv::COLOR_RGB2GRAY); // grayscale に(破壊的)
+        cv::minMaxLoc(img_singlechannel, &minVal, &maxVal, &min_pt, &max_pt);
+        std::cout << "min/max" << minVal << "/" << maxVal << std::endl;
+        std::cout << "-------------------------" << std::endl;
+        */
+
+
+        float gamma = 1.2; // 1.2; // gamma 値を決め打ちにしてみる
 
         cv::Mat lut = cv::Mat(1, 256, CV_8U);             // cv::LUT look up table の用意
         for (int i = 0; i < 256; i++) {
