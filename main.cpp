@@ -8,7 +8,7 @@
 #define MID 75  // jpeg middle quality: 60 から変更
 #define LOW 25  // jpeg low quality
 #define PNG_Q 9
-#define GAMMA   // 画像の明るさ調整をガンマ関数で行う
+//#define GAMMA   // 画像の明るさ調整をガンマ関数で行う
 
 //#define draw_page  // 画像で確認する場合は有効に、普段は無効
 //#define first_contour  // 最初の輪郭の確認用、普段は無効
@@ -134,6 +134,38 @@ cv::Mat diff_g2r(cv::Mat img) { // 緑色と赤色の差分を取って強調
     return (result * 100);
 }
 
+int get_whitest_peak(cv::Mat img) {
+    // ヒストグラムを生成するために必要なデータ
+    int image_num = 1;      // 入力画像の枚数
+    int channels[] = { 0 }; // cv::Matの何番目のチャネルを使うか 今回は白黒画像なので0番目のチャネル以外選択肢なし
+    cv::MatND hist;         // ここにヒストグラムが出力される
+    int dim_num = 1;        // ヒストグラムの次元数
+    int bin_num = 64;       // ヒストグラムのビンの数: 輝度幅(256/bin_num)のヒストグラムになる
+    int bin_nums[] = { bin_num };      // 今回は1次元のヒストグラムを作るので要素数は一つ
+    float range[] = { 0, 256 };        // 扱うデータの最小値、最大値 今回は輝度データなので値域は[0, 255]
+    const float *ranges[] = { range }; // 今回は1次元のヒストグラムを作るので要素数は一つ
+
+    // 上 50px をトリミング (ノイズ対策)
+    cv::Mat img_cropped =  cv::Mat(img, cv::Rect(0, 50, img.cols, img.rows - 50));
+
+    // 白黒画像から輝度のヒストグラムデータ（＝各binごとの出現回数をカウントしたもの）を生成
+    cv::calcHist(&img_cropped, image_num, channels, cv::Mat(), hist, dim_num, bin_nums, ranges);
+
+    // テキスト形式でヒストグラムデータを確認
+    //std::cout << hist << std::endl;
+
+    // ヒストグラムを白い方から辿って、数値が増加した後に減少を示す最初の輝度値を探す
+    int i = hist.rows;
+    int prev_val = 0;
+    while (i > 0) {
+        if (hist.at<float>(i - 1, 0) >= prev_val) {
+            prev_val = hist.at<float>(i - 1, 0);
+            i--;
+        } else { break; };
+    };
+    return (256 * i / bin_num); // 該当する輝度範囲の最低値を返す: e.g.: 228-231 の場合、228 を返す
+}
+
 int main(int argc, char *argv[]) {
     cv::Mat img_org, img_diff, img_rotated, img_scale;
     std::vector<cv::Point> outer_contour; // 外周輪郭保存用
@@ -202,12 +234,6 @@ int main(int argc, char *argv[]) {
         angle = angle + 90.0;
     };
 
-    /*
-    std::cout << "angle:" << angle << std::endl;
-    std::cout << "r_angle:" << r_angle << std::endl;
-    std::cout << "++++++++++++++++++++++++++++" << std::endl;;
-    */
-
     cv::Mat M = cv::getRotationMatrix2D(rect.center, angle, 1.0);;          // 回転行列
     cv::warpAffine(img_org, img_rotated, M, img_org.size(), cv::INTER_CUBIC); // 回転して img_rotated に保存
                                                                               
@@ -248,34 +274,16 @@ int main(int argc, char *argv[]) {
     #endif
 
     std::string output_file = output_filename(input_file, png_flag);  // 出力ファイル名の生成
+    cv::Mat img_cropped = cv::Mat(img_rotated, cv::Rect(x_low + side_margin, top_margin, width - side_margin * 2, height - bottom_margin));	// 出力部分の切り出し	
 
     /*
     std::cout << "x_low, width, height: " << x_low << "," << width << "," << height <<  std::endl;
-    std::cout << "side_margin: " << side_margin <<  std::endl;
-    std::cout << "top_margin: " << top_margin <<  std::endl;
+    std::cout << "side_margin: " << side_margin <<  std::endl; std::cout << "top_margin: " << top_margin <<  std::endl;
     std::cout << "bottom_margin: " << bottom_margin <<  std::endl;
     */
 
-    cv::Mat img_cropped =  cv::Mat(img_rotated, cv::Rect(x_low + side_margin, top_margin, width - side_margin * 2, height - bottom_margin));	// 出力部分の切り出し	
-
     #ifndef GAMMA
-    // 小説などで余白が白い場合、画素値を線形に調整する
-        int cropped_width = img_cropped.cols, cropped_height = img_cropped.rows;
-        int mean_val[4];
-        int sample_points[4][2] = {                                // 上下左右の 1000px x 10px 領域をサンプリング
-            {cropped_width / 2,  15},
-            {cropped_width - 15,  cropped_height / 2},
-            {cropped_width / 2,  cropped_height - 15},
-            {15,                 cropped_height / 2}
-        };
-        for (int i = 0; i < 4; i++) {
-             int x = sample_points[i][0], y = sample_points[i][1];
-             mean_val[i] = mean_pixel_value(img_cropped, x - 5, y - 5, 10, 10);
-        };
-        std::sort(mean_val, mean_val + 4);                         // ソートして
-
-        //float gain = 250 / (float)(mean_val[1] + mean_val[2]) * 2; // 最大値と最小値を除いた平均と 250 を比較して
-        float gain = 250 / (float)(mean_val[0]);    // 余白の最大値と 250 を比較して
+        float gain = 250 / (float)(get_whitest_peak(img_cropped));    // 余白の最大値と 250 を比較して
         cv::Mat img_adjusted = gain * img_cropped;	               // 係数 gain を画像に乗算する
     #endif
 
@@ -283,40 +291,7 @@ int main(int argc, char *argv[]) {
     // 漫画などで余白が白いとは限らない場合、画素値をgamma 補正で調整する
     // gamma(x) = (log(255) - log(250)) / (log(255) - log(x));
         // 最も白い部分と 250 を比較してgamma値を算出。1行下は実際の計算値
-    // float gamma = 0.01980 / (5.54126 - std::log(mean_val[0])); // gamma 値の算出
-
-        /*
-        // ヒストグラムを生成するために必要なデータ
-        int image_num = 1;      // 入力画像の枚数
-        int channels[] = { 0 }; // cv::Matの何番目のチャネルを使うか 今回は白黒画像なので0番目のチャネル以外選択肢なし
-        cv::MatND hist;         // ここにヒストグラムが出力される
-        int dim_num = 1;        // ヒストグラムの次元数
-        int bin_num = 128;       // ヒストグラムのビンの数
-        int bin_nums[] = { bin_num };      // 今回は1次元のヒストグラムを作るので要素数は一つ
-        float range[] = { 0, 256 };        // 扱うデータの最小値、最大値　今回は輝度データなので値域は[0, 255]
-        const float *ranges[] = { range }; // 今回は1次元のヒストグラムを作るので要素数は一つ
-
-        // 白黒画像から輝度のヒストグラムデータ（＝各binごとの出現回数をカウントしたもの）を生成
-        cv::calcHist(&img_cropped, image_num, channels, cv::Mat(), hist, dim_num, bin_nums, ranges);
-
-        // テキスト形式でヒストグラムデータを確認
-        std::cout << hist << std::endl;
-        */
-
-        /*
-        cv::Point min_pt, max_pt;
-        double minVal, maxVal;
-        cv::Mat img_singlechannel = img_cropped;
-        cvtColor(img_singlechannel, img_singlechannel, cv::COLOR_RGB2GRAY); // grayscale に(破壊的)
-
-        std::cout << img_singlechannel << std::endl;
-
-        cv::minMaxLoc(img_singlechannel, &minVal, &maxVal, &min_pt, &max_pt);
-        //maxVal = 250.0;
-        float gamma = 0.01980 / (5.54126 - std::log(maxVal - 5)); // gamma 値の算出
-
-        std::cout << maxVal << "/" << gamma << std::endl;
-        */
+    // float gamma = 0.01980 / (5.54126 - std::log(x)); // gamma 値の算出
 
 	/* 画像の最大値、最小値の確認用
         cv::Point min_pt, max_pt;
@@ -326,10 +301,12 @@ int main(int argc, char *argv[]) {
         cv::minMaxLoc(img_singlechannel, &minVal, &maxVal, &min_pt, &max_pt);
         std::cout << "min/max" << minVal << "/" << maxVal << std::endl;
         std::cout << "-------------------------" << std::endl;
-        */
+  */
 
-
-        float gamma = 1.2; // 1.2; // gamma 値を決め打ちにしてみる
+        //float gamma = 0.01980 / (5.54126 - std::log(get_whitest_peak(img_cropped))); // gamma 値の算出
+        //std::cout << "peak:" << get_whitest_peak(img_cropped) << std::endl;
+        //std::cout << "gamma:" << gamma << std::endl;
+        float gamma = 1.2; // gamma 値を決め打ちにしてみる
 
         cv::Mat lut = cv::Mat(1, 256, CV_8U);             // cv::LUT look up table の用意
         for (int i = 0; i < 256; i++) {
